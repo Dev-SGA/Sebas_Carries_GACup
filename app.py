@@ -10,9 +10,9 @@ from matplotlib.patches import FancyArrowPatch
 from streamlit_image_coordinates import streamlit_image_coordinates
 import math
 
-st.set_page_config(layout="wide", page_title="Carried Map Dashboard")
+st.set_page_config(layout="wide", page_title="Carry Map Dashboard")
 st.title("Progressive Carries Dashboard")
-st.caption("Clique na bolinha no início da carregada para ver o vídeo (se houver).")
+st.caption("Click on the dot at the start of the carry to view the video (if available).")
 
 # ==========================
 # Configuration
@@ -21,7 +21,7 @@ FINAL_THIRD_LINE_X = 80
 
 # ==========================
 # DATA
-# Cada item:
+# Each item:
 # (x_start, y_start, x_end, y_end, video)
 # ==========================
 carries_by_match = {
@@ -51,52 +51,54 @@ def has_video_value(v) -> bool:
     return pd.notna(v) and str(v).strip() != ""
 
 def build_df(events: list[tuple]) -> pd.DataFrame:
-    carregadas = []
+    carries = []
 
     for i, event in enumerate(events, start=1):
         x_start, y_start, x_end, y_end, video = event
         dist = calculate_distance(x_start, y_start, x_end, y_end)
 
-        carregadas.append(
+        carries.append(
             {
-                "numero": i,
+                "number": i,
                 "x_start": float(x_start),
                 "y_start": float(y_start),
                 "x_end": float(x_end),
                 "y_end": float(y_end),
-                "distancia": dist,
+                "distance": dist,
                 "video": video,
             }
         )
 
-    df = pd.DataFrame(carregadas)
+    df = pd.DataFrame(carries)
 
     if not df.empty:
-        df["in_final_third"] = df["x_end"] >= FINAL_THIRD_LINE_X
-        df["to_box"] = df["x_end"] >= 100
+        df["to_final_third"] = df["x_end"] >= FINAL_THIRD_LINE_X
+        df["into_box"] = df["x_end"] >= 100
     else:
         df = pd.DataFrame(
             columns=[
-                "numero", "x_start", "y_start", "x_end", "y_end",
-                "distancia", "video", "in_final_third", "to_box"
+                "number", "x_start", "y_start", "x_end", "y_end",
+                "distance", "video", "to_final_third", "into_box"
             ]
         )
 
     return df
 
 def compute_stats(df: pd.DataFrame) -> dict:
-    total_carregadas = len(df)
-    distancia_total = df["distancia"].sum() if not df.empty else 0
-    final_third_total = int(df["in_final_third"].sum()) if not df.empty else 0
-    box_total = int(df["to_box"].sum()) if not df.empty else 0
-    com_video = int(df["video"].apply(has_video_value).sum()) if not df.empty else 0
+    total_carries = len(df)
+    total_distance = df["distance"].sum() if not df.empty else 0
+    to_final_third = int(df["to_final_third"].sum()) if not df.empty else 0
+    into_box = int(df["into_box"].sum()) if not df.empty else 0
+    with_video = int(df["video"].apply(has_video_value).sum()) if not df.empty else 0
+    avg_distance = (total_distance / total_carries) if total_carries > 0 else 0
 
     return {
-        "total_carregadas": total_carregadas,
-        "distancia_total": round(distancia_total, 1),
-        "final_third_total": final_third_total,
-        "box_total": box_total,
-        "com_video": com_video,
+        "total_carries": total_carries,
+        "total_distance": round(total_distance, 1),
+        "to_final_third": to_final_third,
+        "into_box": into_box,
+        "with_video": with_video,
+        "avg_distance": round(avg_distance, 1),
     }
 
 def draw_carry_map(df: pd.DataFrame, title: str):
@@ -127,7 +129,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
             zorder=3,
         )
 
-        # Anel dourado se houver vídeo
+        # Gold ring if video exists
         if has_vid:
             pitch.scatter(
                 row["x_start"], row["y_start"],
@@ -140,7 +142,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
                 zorder=4,
             )
 
-        # Bolinha principal clicável
+        # Main clickable dot
         pitch.scatter(
             row["x_start"], row["y_start"],
             s=START_DOT_SIZE,
@@ -155,7 +157,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
     ax.set_title(title, fontsize=12)
 
     legend_elements = [
-        Line2D([0], [0], color=carry_color, lw=2.5, label="Carregadas"),
+        Line2D([0], [0], color=carry_color, lw=2.5, label="Carries"),
         Line2D([0], [0], marker="o", color="w",
                markerfacecolor="gray", markeredgecolor="white",
                markersize=6, label="Start point (click)"),
@@ -188,7 +190,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
     )
     fig.patches.append(arrow)
     fig.text(
-        0.5, 0.02, "Direção do Ataque",
+        0.5, 0.02, "Attack Direction",
         ha="center", va="center",
         fontsize=9, color="#333333"
     )
@@ -204,8 +206,8 @@ def draw_carry_map(df: pd.DataFrame, title: str):
 # ==========================
 # Sidebar
 # ==========================
-st.sidebar.header("Seleção de Partida")
-selected_match = st.sidebar.radio("Escolha o jogo", MATCHES, index=0)
+st.sidebar.header("Match Selection")
+selected_match = st.sidebar.radio("Choose the match", MATCHES, index=0)
 
 # ==========================
 # Data selection
@@ -227,29 +229,26 @@ stats = compute_stats(df)
 col_stats, col_map = st.columns([1, 2], gap="large")
 
 with col_stats:
-    st.subheader("Estatísticas")
+    st.subheader("Statistics")
 
     c1, c2 = st.columns(2)
-    c1.metric("Total Carregadas", stats["total_carregadas"])
-    c2.metric("Distância Total", f"{stats['distancia_total']}m")
+    c1.metric("Total Carries", stats["total_carries"])
+    c2.metric("Total Distance", f"{stats['total_distance']} m")
 
     st.divider()
 
-    st.subheader("Avanço")
-    c3, c4 = st.columns(2)
-    c3.metric("No Terço Final", stats["final_third_total"])
-    c4.metric("Até a Área", stats["box_total"])
+    st.subheader("Progression")
+    c3, c4, c5 = st.columns(3)
+    c3.metric("To Final Third", stats["to_final_third"])
+    c4.metric("Into the Box", stats["into_box"])
+    c5.metric("Avg Carry Distance", f"{stats['avg_distance']} m")
 
-    st.metric("Com Vídeo", stats["com_video"])
-
-    if stats["total_carregadas"] > 0:
-        media = round(stats["distancia_total"] / stats["total_carregadas"], 1)
-        st.info(f"Média de {media} metros por carregada.")
+    st.metric("With Video", stats["with_video"])
 
 with col_map:
-    st.subheader("Visualização")
+    st.subheader("Carry Map")
 
-    img_obj, ax, fig = draw_carry_map(df, title=f"Mapa de Carregadas - {selected_match}")
+    img_obj, ax, fig = draw_carry_map(df, title=f"Carry Map - {selected_match}")
     click = streamlit_image_coordinates(img_obj, width=780)
 
     selected_carry = None
@@ -280,22 +279,22 @@ with col_map:
     plt.close(fig)
 
     st.divider()
-    st.subheader("Vídeo")
+    st.subheader("Video")
 
     if selected_carry is None:
-        st.info("Clique na bolinha no início da carregada para ver o vídeo (se houver).")
+        st.info("Click on the dot at the start of the carry to view the video (if available).")
     else:
-        st.success(f"Carregada selecionada: #{int(selected_carry['numero'])}")
+        st.success(f"Selected carry: #{int(selected_carry['number'])}")
         st.write(
-            f"Início: ({selected_carry['x_start']:.2f}, {selected_carry['y_start']:.2f})  \n"
-            f"Fim: ({selected_carry['x_end']:.2f}, {selected_carry['y_end']:.2f})  \n"
-            f"Distância: {selected_carry['distancia']:.2f} m"
+            f"Start: ({selected_carry['x_start']:.2f}, {selected_carry['y_start']:.2f})  \n"
+            f"End: ({selected_carry['x_end']:.2f}, {selected_carry['y_end']:.2f})  \n"
+            f"Distance: {selected_carry['distance']:.2f} m"
         )
 
         if has_video_value(selected_carry["video"]):
             try:
                 st.video(selected_carry["video"])
             except Exception:
-                st.error(f"Arquivo de vídeo não encontrado: {selected_carry['video']}")
+                st.error(f"Video file not found: {selected_carry['video']}")
         else:
-            st.warning("Não há vídeo carregado para esta carregada.")
+            st.warning("No video available for this carry.")
