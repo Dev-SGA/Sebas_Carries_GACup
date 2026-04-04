@@ -18,6 +18,7 @@ st.caption("Click on the dot at the start of the carry to view the video (if ava
 # Configuration
 # ==========================
 FINAL_THIRD_LINE_X = 80
+BOX_ENTRY_LINE_X = 100
 
 # ==========================
 # DATA
@@ -72,8 +73,14 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
     df = pd.DataFrame(carries)
 
     if not df.empty:
-        df["to_final_third"] = df["x_end"] >= FINAL_THIRD_LINE_X
-        df["into_box"] = df["x_end"] >= 100
+        df["to_final_third"] = (
+            (df["x_start"] < FINAL_THIRD_LINE_X) &
+            (df["x_end"] >= FINAL_THIRD_LINE_X)
+        )
+        df["into_box"] = (
+            (df["x_start"] < BOX_ENTRY_LINE_X) &
+            (df["x_end"] >= BOX_ENTRY_LINE_X)
+        )
     else:
         df = pd.DataFrame(
             columns=[
@@ -129,7 +136,6 @@ def draw_carry_map(df: pd.DataFrame, title: str):
             zorder=3,
         )
 
-        # Gold ring if video exists
         if has_vid:
             pitch.scatter(
                 row["x_start"], row["y_start"],
@@ -142,7 +148,6 @@ def draw_carry_map(df: pd.DataFrame, title: str):
                 zorder=4,
             )
 
-        # Main clickable dot
         pitch.scatter(
             row["x_start"], row["y_start"],
             s=START_DOT_SIZE,
