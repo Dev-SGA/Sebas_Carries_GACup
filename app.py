@@ -18,7 +18,11 @@ st.caption("Click on the dot at the start of the carry to view the video (if ava
 # Configuration
 # ==========================
 FINAL_THIRD_LINE_X = 80
-BOX_ENTRY_LINE_X = 100
+
+# StatsBomb pitch box approximation
+BOX_X_MIN = 102
+BOX_Y_MIN = 18
+BOX_Y_MAX = 62
 
 # ==========================
 # DATA
@@ -51,6 +55,9 @@ def calculate_distance(x1, y1, x2, y2):
 def has_video_value(v) -> bool:
     return pd.notna(v) and str(v).strip() != ""
 
+def is_in_box(x, y) -> bool:
+    return x >= BOX_X_MIN and BOX_Y_MIN <= y <= BOX_Y_MAX
+
 def build_df(events: list[tuple]) -> pd.DataFrame:
     carries = []
 
@@ -77,9 +84,10 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
             (df["x_start"] < FINAL_THIRD_LINE_X) &
             (df["x_end"] >= FINAL_THIRD_LINE_X)
         )
-        df["into_box"] = (
-            (df["x_start"] < BOX_ENTRY_LINE_X) &
-            (df["x_end"] >= BOX_ENTRY_LINE_X)
+
+        df["into_box"] = df.apply(
+            lambda row: (not is_in_box(row["x_start"], row["y_start"])) and is_in_box(row["x_end"], row["y_end"]),
+            axis=1
         )
     else:
         df = pd.DataFrame(
@@ -96,7 +104,6 @@ def compute_stats(df: pd.DataFrame) -> dict:
     total_distance = df["distance"].sum() if not df.empty else 0
     to_final_third = int(df["to_final_third"].sum()) if not df.empty else 0
     into_box = int(df["into_box"].sum()) if not df.empty else 0
-    with_video = int(df["video"].apply(has_video_value).sum()) if not df.empty else 0
     avg_distance = (total_distance / total_carries) if total_carries > 0 else 0
 
     return {
@@ -104,7 +111,6 @@ def compute_stats(df: pd.DataFrame) -> dict:
         "total_distance": round(total_distance, 1),
         "to_final_third": to_final_third,
         "into_box": into_box,
-        "with_video": with_video,
         "avg_distance": round(avg_distance, 1),
     }
 
@@ -136,6 +142,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
             zorder=3,
         )
 
+        # Gold ring if video exists
         if has_vid:
             pitch.scatter(
                 row["x_start"], row["y_start"],
@@ -148,6 +155,7 @@ def draw_carry_map(df: pd.DataFrame, title: str):
                 zorder=4,
             )
 
+        # Main clickable dot
         pitch.scatter(
             row["x_start"], row["y_start"],
             s=START_DOT_SIZE,
@@ -247,8 +255,6 @@ with col_stats:
     c3.metric("To Final Third", stats["to_final_third"])
     c4.metric("Into the Box", stats["into_box"])
     c5.metric("Avg Carry Distance", f"{stats['avg_distance']} m")
-
-    st.metric("With Video", stats["with_video"])
 
 with col_map:
     st.subheader("Carry Map")
