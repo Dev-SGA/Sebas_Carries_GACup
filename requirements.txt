@@ -5,3 +5,4 @@ mplsoccer
 Pillow
 numpy
 streamlit_image_coordinates
+socceraction
