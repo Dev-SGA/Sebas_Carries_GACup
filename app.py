@@ -9,6 +9,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import FancyArrowPatch
 from streamlit_image_coordinates import streamlit_image_coordinates
 import math
+import socceraction.xthreat as xthreat
 
 st.set_page_config(layout="wide", page_title="Carry Map Dashboard")
 st.title("Progressive Carries Dashboard")
@@ -23,6 +24,11 @@ FINAL_THIRD_LINE_X = 80
 BOX_X_MIN = 102
 BOX_Y_MIN = 18
 BOX_Y_MAX = 62
+
+PITCH_LENGTH = 120
+PITCH_WIDTH = 80
+
+XT_MODEL_URL = "https://karun.in/blog/data/open_xt_12x8_v1.json"
 
 # ==========================
 # DATA
@@ -47,6 +53,16 @@ carries_by_match = {
 MATCHES = ["Vs Los Angeles", "Vs Slavia Praha", "Vs Sockers", "All Matches"]
 
 # ==========================
+# Load xT model
+# ==========================
+@st.cache_resource
+def load_xt_model():
+    return xthreat.load_model(XT_MODEL_URL)
+
+xt_model = load_xt_model()
+xt_grid = xt_model.xT
+
+# ==========================
 # Helpers
 # ==========================
 def calculate_distance(x1, y1, x2, y2):
@@ -58,12 +74,29 @@ def has_video_value(v) -> bool:
 def is_in_box(x, y) -> bool:
     return x >= BOX_X_MIN and BOX_Y_MIN <= y <= BOX_Y_MAX
 
+def get_xt_value(x: float, y: float, grid: np.ndarray) -> float:
+    rows, cols = grid.shape
+
+    x = min(max(float(x), 0), PITCH_LENGTH - 1e-6)
+    y = min(max(float(y), 0), PITCH_WIDTH - 1e-6)
+
+    col = min(int((x / PITCH_LENGTH) * cols), cols - 1)
+    row = min(int((y / PITCH_WIDTH) * rows), rows - 1)
+
+    return float(grid[row, col])
+
+def compute_carry_xt(x_start: float, y_start: float, x_end: float, y_end: float, grid: np.ndarray) -> float:
+    xt_start = get_xt_value(x_start, y_start, grid)
+    xt_end = get_xt_value(x_end, y_end, grid)
+    return xt_end - xt_start
+
 def build_df(events: list[tuple]) -> pd.DataFrame:
     carries = []
 
     for i, event in enumerate(events, start=1):
         x_start, y_start, x_end, y_end, video = event
         dist = calculate_distance(x_start, y_start, x_end, y_end)
+        xt_value = compute_carry_xt(x_start, y_start, x_end, y_end, xt_grid)
 
         carries.append(
             {
@@ -74,6 +107,7 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
                 "y_end": float(y_end),
                 "distance": dist,
                 "video": video,
+                "xT": xt_value,
             }
         )
 
@@ -93,7 +127,7 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
         df = pd.DataFrame(
             columns=[
                 "number", "x_start", "y_start", "x_end", "y_end",
-                "distance", "video", "to_final_third", "into_box"
+                "distance", "video", "xT", "to_final_third", "into_box"
             ]
         )
 
@@ -102,16 +136,20 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
 def compute_stats(df: pd.DataFrame) -> dict:
     total_carries = len(df)
     total_distance = df["distance"].sum() if not df.empty else 0
+    total_xt = df["xT"].sum() if not df.empty else 0
     to_final_third = int(df["to_final_third"].sum()) if not df.empty else 0
     into_box = int(df["into_box"].sum()) if not df.empty else 0
     avg_distance = (total_distance / total_carries) if total_carries > 0 else 0
+    avg_xt = (total_xt / total_carries) if total_carries > 0 else 0
 
     return {
         "total_carries": total_carries,
         "total_distance": round(total_distance, 1),
+        "total_xt": round(total_xt, 3),
         "to_final_third": to_final_third,
         "into_box": into_box,
         "avg_distance": round(avg_distance, 1),
+        "avg_xt": round(avg_xt, 3),
     }
 
 def draw_carry_map(df: pd.DataFrame, title: str):
@@ -142,7 +180,6 @@ def draw_carry_map(df: pd.DataFrame, title: str):
             zorder=3,
         )
 
-        # Gold ring if video exists
         if has_vid:
             pitch.scatter(
                 row["x_start"], row["y_start"],
@@ -155,7 +192,6 @@ def draw_carry_map(df: pd.DataFrame, title: str):
                 zorder=4,
             )
 
-        # Main clickable dot
         pitch.scatter(
             row["x_start"], row["y_start"],
             s=START_DOT_SIZE,
@@ -250,11 +286,17 @@ with col_stats:
 
     st.divider()
 
+    c3, c4 = st.columns(2)
+    c3.metric("Total xT", f"{stats['total_xt']:.3f}")
+    c4.metric("Avg xT / Carry", f"{stats['avg_xt']:.3f}")
+
+    st.divider()
+
     st.subheader("Progression")
-    c3, c4, c5 = st.columns(3)
-    c3.metric("To Final Third", stats["to_final_third"])
-    c4.metric("Into the Box", stats["into_box"])
-    c5.metric("Avg Carry Distance", f"{stats['avg_distance']} m")
+    c5, c6, c7 = st.columns(3)
+    c5.metric("To Final Third", stats["to_final_third"])
+    c6.metric("Into the Box", stats["into_box"])
+    c7.metric("Avg Carry Distance", f"{stats['avg_distance']} m")
 
 with col_map:
     st.subheader("Carry Map")
@@ -299,7 +341,8 @@ with col_map:
         st.write(
             f"Start: ({selected_carry['x_start']:.2f}, {selected_carry['y_start']:.2f})  \n"
             f"End: ({selected_carry['x_end']:.2f}, {selected_carry['y_end']:.2f})  \n"
-            f"Distance: {selected_carry['distance']:.2f} m"
+            f"Distance: {selected_carry['distance']:.2f} m  \n"
+            f"xT: {selected_carry['xT']:.3f}"
         )
 
         if has_video_value(selected_carry["video"]):
@@ -309,3 +352,12 @@ with col_map:
                 st.error(f"Video file not found: {selected_carry['video']}")
         else:
             st.warning("No video available for this carry.")
+
+# ==========================
+# Optional table
+# ==========================
+with st.expander("Show carry data"):
+    st.dataframe(
+        df[["number", "x_start", "y_start", "x_end", "y_end", "distance", "xT", "to_final_third", "into_box"]],
+        use_container_width=True
+    )
