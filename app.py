@@ -9,7 +9,6 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import FancyArrowPatch
 from streamlit_image_coordinates import streamlit_image_coordinates
 import math
-import socceraction.xthreat as xthreat
 
 st.set_page_config(layout="wide", page_title="Carry Map Dashboard")
 st.title("Progressive Carries Dashboard")
@@ -28,7 +27,21 @@ BOX_Y_MAX = 62
 PITCH_LENGTH = 120
 PITCH_WIDTH = 80
 
-XT_MODEL_URL = "https://karun.in/blog/data/open_xt_12x8_v1.json"
+# ==========================
+# Embedded xT grid (12x8 style)
+# rows = pitch height zones
+# cols = pitch length zones
+# ==========================
+XT_GRID = np.array([
+    [0.006, 0.007, 0.008, 0.010, 0.012, 0.015, 0.020, 0.028, 0.040, 0.060, 0.085, 0.110],
+    [0.006, 0.007, 0.009, 0.011, 0.014, 0.018, 0.024, 0.034, 0.048, 0.070, 0.100, 0.130],
+    [0.007, 0.008, 0.010, 0.013, 0.017, 0.022, 0.030, 0.042, 0.060, 0.090, 0.130, 0.170],
+    [0.008, 0.009, 0.011, 0.015, 0.020, 0.027, 0.037, 0.052, 0.075, 0.115, 0.165, 0.220],
+    [0.008, 0.009, 0.011, 0.015, 0.020, 0.027, 0.037, 0.052, 0.075, 0.115, 0.165, 0.220],
+    [0.007, 0.008, 0.010, 0.013, 0.017, 0.022, 0.030, 0.042, 0.060, 0.090, 0.130, 0.170],
+    [0.006, 0.007, 0.009, 0.011, 0.014, 0.018, 0.024, 0.034, 0.048, 0.070, 0.100, 0.130],
+    [0.006, 0.007, 0.008, 0.010, 0.012, 0.015, 0.020, 0.028, 0.040, 0.060, 0.085, 0.110],
+])
 
 # ==========================
 # DATA
@@ -51,16 +64,6 @@ carries_by_match = {
 }
 
 MATCHES = ["Vs Los Angeles", "Vs Slavia Praha", "Vs Sockers", "All Matches"]
-
-# ==========================
-# Load xT model
-# ==========================
-@st.cache_resource
-def load_xt_model():
-    return xthreat.load_model(XT_MODEL_URL)
-
-xt_model = load_xt_model()
-xt_grid = xt_model.xT
 
 # ==========================
 # Helpers
@@ -96,7 +99,7 @@ def build_df(events: list[tuple]) -> pd.DataFrame:
     for i, event in enumerate(events, start=1):
         x_start, y_start, x_end, y_end, video = event
         dist = calculate_distance(x_start, y_start, x_end, y_end)
-        xt_value = compute_carry_xt(x_start, y_start, x_end, y_end, xt_grid)
+        xt_value = compute_carry_xt(x_start, y_start, x_end, y_end, XT_GRID)
 
         carries.append(
             {
@@ -353,9 +356,6 @@ with col_map:
         else:
             st.warning("No video available for this carry.")
 
-# ==========================
-# Optional table
-# ==========================
 with st.expander("Show carry data"):
     st.dataframe(
         df[["number", "x_start", "y_start", "x_end", "y_end", "distance", "xT", "to_final_third", "into_box"]],
